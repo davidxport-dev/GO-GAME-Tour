@@ -1,0 +1,5 @@
+{
+  "name": "Go Master",
+  "description": "A modern Go game designed for Windows, featuring offline play against a powerful AI, simulated online lobbies, and tournament brackets. Hone your skills and master the ancient game of Go.",
+  "requestFramePermissions": []
+}
