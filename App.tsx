@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { GameView, AIDifficulty } from './types';
+import { GameView, AIDifficulty, TimeSetting } from './types';
 import MainMenu from './components/MainMenu';
 import GameScreen from './components/GameScreen';
 import OnlineScreen from './components/OnlineScreen';
@@ -14,14 +14,16 @@ const App: React.FC = () => {
   const [view, setView] = useState<GameView>('menu');
   const [boardSize, setBoardSize] = useState<number>(9);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('skilled');
+  const [timeSetting, setTimeSetting] = useState<TimeSetting>('15m');
 
   const navigateTo = useCallback((newView: GameView) => {
     setView(newView);
   }, []);
 
-  const handleStartGame = useCallback((size: number, difficulty: AIDifficulty) => {
+  const handleStartGame = useCallback((size: number, difficulty: AIDifficulty, time: TimeSetting) => {
     setBoardSize(size);
     setAiDifficulty(difficulty);
+    setTimeSetting(time);
     setView('offline-game');
   }, []);
 
@@ -32,7 +34,7 @@ const App: React.FC = () => {
       case 'offline-setup':
         return <OfflineSetupScreen onBack={() => navigateTo('menu')} onStartGame={handleStartGame} />;
       case 'offline-game':
-        return <GameScreen onBack={() => navigateTo('menu')} size={boardSize} difficulty={aiDifficulty} />;
+        return <GameScreen onBack={() => navigateTo('menu')} size={boardSize} difficulty={aiDifficulty} timeSetting={timeSetting} />;
       case 'online':
         return <OnlineScreen onBack={() => navigateTo('menu')} onNavigate={navigateTo} />;
       case 'tournaments':

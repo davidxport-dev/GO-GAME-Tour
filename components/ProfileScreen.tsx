@@ -50,7 +50,7 @@ const ProfileScreen: React.FC<{ onBack: () => void; }> = ({ onBack }) => {
         {/* Left Column: Details & Ranking */}
         <div className="md:col-span-1 space-y-8">
             <div className="bg-gray-900/50 p-6 rounded-lg text-center">
-                 <UserCircleIcon/>
+                 <UserCircleIcon className="w-24 h-24 mx-auto text-gray-500" />
                  <h2 className="text-2xl font-bold mt-4">{user.username}</h2>
                  <p className="text-gray-400">{user.city}, {user.country}</p>
             </div>

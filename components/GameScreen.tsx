@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Player, Board, Stone, AIDifficulty } from '../types';
+import { Player, Board, Stone, AIDifficulty, TimeSetting } from '../types';
 import GoBoard from './GoBoard';
 import { getAIMove } from '../services/geminiService';
 import ArrowLeftIcon from './icons/ArrowLeftIcon';
 import { playSound } from '../services/audioService';
 import SpeakerWaveIcon from './icons/SpeakerWaveIcon';
+import ClockIcon from './icons/ClockIcon';
 
-const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDifficulty; }> = ({ onBack, size, difficulty }) => {
+const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDifficulty; timeSetting: TimeSetting; }> = ({ onBack, size, difficulty, timeSetting }) => {
   const initialBoard = useMemo(() => Array(size).fill(null).map(() => Array(size).fill(null)), [size]);
   
+  const getInitialTime = useCallback((setting: TimeSetting): number | null => {
+    if (setting === 'unlimited') return null;
+    const minutes = parseInt(setting.replace('m', ''));
+    return minutes * 60;
+  }, []);
+
   const [board, setBoard] = useState<Board>(initialBoard);
   const [currentPlayer, setCurrentPlayer] = useState<Player>('black');
   const [scores, setScores] = useState({ black: 0, white: 0 });
@@ -24,6 +31,10 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
   const [scoreDetails, setScoreDetails] = useState<{ black: { territory: number, captured: number }, white: { territory: number, captured: number }} | null>(null);
   const [lastSound, setLastSound] = useState<string | null>(null);
   const [invalidMove, setInvalidMove] = useState<{row: number, col: number} | null>(null);
+  const [timers, setTimers] = useState({
+    black: getInitialTime(timeSetting),
+    white: getInitialTime(timeSetting),
+  });
 
   useEffect(() => {
     if (lastSound) {
@@ -45,7 +56,9 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     setLastMove(null);
     setTerritory(initialBoard);
     setScoreDetails(null);
-  }, [initialBoard]);
+    const initialTime = getInitialTime(timeSetting);
+    setTimers({ black: initialTime, white: initialTime });
+  }, [initialBoard, getInitialTime, timeSetting]);
   
   // Effect to clear error messages after a delay
   useEffect(() => {
@@ -289,31 +302,97 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     }
   }, [isAITurn, currentPlayer, gameOver, board, history, handleMove, passTurn, size, difficulty]);
 
+  // Timer countdown effect
+  useEffect(() => {
+    if (gameOver || timeSetting === 'unlimited') {
+        return;
+    }
+
+    const timerId = setInterval(() => {
+        setTimers(prev => {
+            if (prev[currentPlayer] === null) return prev;
+            
+            const newTime = prev[currentPlayer]! - 1;
+            if (newTime <= 0) {
+                clearInterval(timerId); // Stop interval right away
+                return { ...prev, [currentPlayer]: 0 };
+            }
+            return { ...prev, [currentPlayer]: newTime };
+        });
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, [currentPlayer, gameOver, timeSetting]);
+
+  const handleTimeUp = useCallback(() => {
+      if (gameOver) return;
+      const loser = timers.black === 0 ? 'black' : 'white';
+      const winner = loser === 'black' ? 'White' : 'Black';
+      setMessage(`${winner} wins on time!`);
+      setMessageType('info');
+      setGameOver(true);
+      playSound('capture'); 
+  }, [gameOver, timers.black, timers.white]);
+
+  // Time-up check effect
+  useEffect(() => {
+      if ((timers.black !== null && timers.black <= 0) || (timers.white !== null && timers.white <= 0)) {
+          handleTimeUp();
+      }
+  }, [timers, handleTimeUp]);
+
+  const formatTime = (seconds: number | null) => {
+      if (seconds === null) return '∞';
+      if (seconds < 0) seconds = 0;
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   return (
-    <div className="flex flex-col md:flex-row gap-4 h-full">
-      <div className="flex-none w-full md:w-72 order-2 md:order-1 flex flex-col p-4">
-        <button onClick={onBack} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition mb-4 flex items-center justify-center space-x-2">
+    <div className="h-full flex flex-col md:flex-row gap-4">
+      {/* Info Panel */}
+      <div className="flex flex-col p-4 md:w-80 md:flex-shrink-0 min-h-0">
+        <button onClick={onBack} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition mb-4 flex items-center justify-center space-x-2 flex-shrink-0">
             <ArrowLeftIcon />
             <span>Main Menu</span>
         </button>
-        <div className="bg-gray-900/50 rounded-lg p-4 flex-grow flex flex-col justify-between">
+        <div className="bg-gray-900/50 rounded-lg p-4 flex-grow flex flex-col justify-between overflow-y-auto">
             <div>
                 <h2 className="text-2xl font-bold mb-4">Game Info</h2>
                 <div className={`p-3 rounded-lg border-2 ${currentPlayer === 'black' && !gameOver ? 'border-blue-500' : 'border-transparent'}`}>
-                    <h3 className="text-lg font-semibold">Black (You)</h3>
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-semibold">Black (You)</h3>
+                        {timeSetting !== 'unlimited' && (
+                            <div className={`flex items-center space-x-2 text-lg font-mono p-1 px-2 rounded ${currentPlayer === 'black' && !gameOver ? 'bg-blue-500/20 text-blue-300' : 'text-gray-400'}`}>
+                                <ClockIcon />
+                                <span>{formatTime(timers.black)}</span>
+                            </div>
+                        )}
+                    </div>
                     {scoreDetails ? (
-                        <p>Score: {scores.black} <span className="text-xs text-gray-400">({scoreDetails.black.territory}T + {scoreDetails.black.captured}C)</span></p>
+                        <p className="mt-1">Score: {scores.black} <span className="text-xs text-gray-400">({scoreDetails.black.territory}T + {scoreDetails.black.captured}C)</span></p>
                     ) : (
-                        <p>Captured: {scores.black}</p>
+                        <p className="mt-1">Captured: {scores.black}</p>
                     )}
                 </div>
                 <div className={`mt-4 p-3 rounded-lg border-2 ${currentPlayer === 'white' && !gameOver ? 'border-blue-500' : 'border-transparent'}`}>
-                    <h3 className="text-lg font-semibold">White (AI)</h3>
-                    <p>Difficulty: <span className="capitalize">{difficulty}</span></p>
+                    <div className="flex justify-between items-center">
+                         <div>
+                            <h3 className="text-lg font-semibold">White (AI)</h3>
+                            <p className="text-sm text-gray-400">Difficulty: <span className="capitalize">{difficulty}</span></p>
+                        </div>
+                        {timeSetting !== 'unlimited' && (
+                            <div className={`flex items-center space-x-2 text-lg font-mono p-1 px-2 rounded ${currentPlayer === 'white' && !gameOver ? 'bg-blue-500/20 text-blue-300' : 'text-gray-400'}`}>
+                                <ClockIcon />
+                                <span>{formatTime(timers.white)}</span>
+                            </div>
+                        )}
+                    </div>
                     {scoreDetails ? (
-                        <p>Score: {scores.white} <span className="text-xs text-gray-400">({scoreDetails.white.territory}T + {scoreDetails.white.captured}C)</span></p>
+                        <p className="mt-1">Score: {scores.white} <span className="text-xs text-gray-400">({scoreDetails.white.territory}T + {scoreDetails.white.captured}C)</span></p>
                     ) : (
-                        <p>Captured: {scores.white}</p>
+                        <p className="mt-1">Captured: {scores.white}</p>
                     )}
                 </div>
                 <p className={`mt-6 h-10 transition-all duration-300 ${messageType === 'error' ? 'text-red-400 font-bold' : gameOver ? 'text-green-400 font-semibold' : 'text-gray-400 italic'}`}>{message}</p>
@@ -327,7 +406,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
                 </div>
             </div>
             
-            <div className="flex flex-col space-y-3">
+            <div className="flex flex-col space-y-3 mt-4">
                  <button onClick={handlePass} disabled={isAITurn || gameOver} className="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded transition disabled:bg-gray-600">
                     Pass Turn
                 </button>
@@ -337,7 +416,8 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
             </div>
         </div>
       </div>
-      <div className="flex-grow flex justify-center items-stretch order-1 md:order-2 relative min-h-0 p-4">
+      {/* Board Container */}
+      <div className="relative flex-grow flex items-center justify-center min-w-0 min-h-0 p-4">
           {loadingAI && (
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20 rounded-lg">
                    <div className="text-center">

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Board } from '../types';
 
@@ -43,10 +42,14 @@ const GoBoard: React.FC<GoBoardProps> = ({ size, boardState, onMove, lastMove, d
   const hoshiPoints = getHoshiPoints(size);
   const cellSize = 100 / (size - 1);
 
+  // The root div now uses viewport units to guarantee a large, square size,
+  // bypassing any parent container sizing issues. 
+  // 95vmin = 95% of the smaller viewport dimension (width or height).
+  // This ensures the board is always visible and as large as possible.
   return (
-    <div className="aspect-square max-w-full max-h-full relative bg-[#d2b48c] shadow-lg rounded-md">
+    <div className="w-[95vmin] h-[95vmin] relative bg-[#d2b48c] shadow-lg rounded-md">
       {/* Padded area for the grid, so stones on the edge aren't cut off */}
-      <div className="absolute inset-[5%]">
+      <div className="absolute inset-[2.5%]">
         
         {/* Lines */}
         <div className="absolute inset-0">

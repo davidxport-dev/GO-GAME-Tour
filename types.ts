@@ -3,6 +3,7 @@ export type Stone = Player | null;
 export type Board = Stone[][];
 export type GameView = 'menu' | 'offline-game' | 'online' | 'tournaments' | 'login' | 'rules' | 'offline-setup' | 'profile';
 export type AIDifficulty = 'beginner' | 'skilled' | 'pro';
+export type TimeSetting = '5m' | '15m' | '30m' | 'unlimited';
 
 export interface Move {
   row: number;
