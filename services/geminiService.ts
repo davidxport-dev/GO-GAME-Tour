@@ -35,16 +35,26 @@ export const getAIMove = async (board: Board, currentPlayer: Player, history: Bo
 
   const prompt = `
 ${getDifficultyInstruction(difficulty)}
-You are playing Go as White ('W') on a ${board.length}x${board.length} board.
-Your task is to choose your next move. Respond in JSON.
 
-Current board state ('B' is black, 'W' is white, '.' is empty):
+You are an expert Go player AI, playing as White ('W') on a ${board.length}x${board.length} board. Your task is to analyze the board and determine the best possible move.
+
+**Rules for a valid move:**
+1.  The move must be on an empty intersection (marked with '.').
+2.  **Suicide Rule:** You cannot place a stone where it would have no liberties, unless that move captures opponent stones.
+3.  **Ko Rule:** You cannot make a move that would repeat the board state from the previous turn.
+
+**Current Board State:**
+(B = Black, W = White, . = Empty)
 ${boardString}
 
-Previous board state (for the Ko rule):
+**Previous Board State (for Ko rule check):**
 ${lastBoardStateString}
 
-Your action must be either 'MOVE' to a {row, col} or 'PASS'.
+It is your turn to play as White ('W').
+
+Please provide your decision in JSON format.
+Your response should include your action ('MOVE' or 'PASS') and, if you move, the coordinates {row, col}.
+Your move MUST be on an empty spot.
 `;
 
   try {
@@ -82,13 +92,19 @@ Your action must be either 'MOVE' to a {row, col} or 'PASS'.
     }
 
     if (result.action === 'MOVE' && result.move && typeof result.move.row === 'number' && typeof result.move.col === 'number') {
-      // Basic validation
-      if (result.move.row >= 0 && result.move.row < board.length && result.move.col >= 0 && result.move.col < board.length) {
-          return result.move;
+      const { row, col } = result.move;
+      // Validate move is within bounds and on an empty spot
+      if (row >= 0 && row < board.length && col >= 0 && col < board.length) {
+          if (board[row][col] === null) {
+            return result.move;
+          } else {
+            console.error("AI suggested an occupied spot:", result.move);
+            return 'pass'; // Fallback to passing if spot is occupied
+          }
       }
     }
     
-    console.error("AI response was malformed or suggested an invalid move:", result);
+    console.error("AI response was malformed or suggested an out-of-bounds move:", result);
     return 'pass'; // Fallback to passing
 
   } catch (error) {

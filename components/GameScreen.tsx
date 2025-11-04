@@ -75,13 +75,13 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     }
   }, [message, messageType, currentPlayer, gameOver]);
 
-  const showErrorMessage = (msg: string, row?: number, col?: number) => {
+  const showErrorMessage = useCallback((msg: string, row?: number, col?: number) => {
     setMessage(msg);
     setMessageType('error');
     if (row !== undefined && col !== undefined) {
       setInvalidMove({ row, col });
     }
-  };
+  }, []);
 
   const getNeighbors = useCallback((r: number, c: number) => {
     const neighbors = [];
@@ -210,12 +210,14 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     setIsAITurn(nextPlayer === 'white');
   }, [consecutivePasses, currentPlayer, endGame]);
 
-  const handleMove = useCallback((row: number, col: number) => {
-    if (gameOver || board[row][col] !== null) {
-      if (board[row][col] !== null) {
+  const handleMove = useCallback((row: number, col: number): boolean => {
+    if (gameOver) return false;
+
+    if (board[row][col] !== null) {
+      if (currentPlayer === 'black') { // Only show UI error for human player
         showErrorMessage("Invalid move: Spot is taken.", row, col);
       }
-      return;
+      return false;
     }
     
     let newBoard = board.map(r => [...r]);
@@ -239,15 +241,19 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
 
     const { liberties: selfLiberties } = findGroup(row, col, currentPlayer, newBoard);
     if (selfLiberties === 0 && capturedStones === 0) {
-      showErrorMessage("Illegal suicide move.", row, col);
-      return;
+      if (currentPlayer === 'black') {
+        showErrorMessage("Illegal suicide move.", row, col);
+      }
+      return false;
     }
 
     const newBoardString = JSON.stringify(newBoard);
     const lastBoardString = history.length > 0 ? JSON.stringify(history[history.length - 1]) : null;
     if(newBoardString === lastBoardString){
-        showErrorMessage("Illegal Ko move.", row, col);
-        return;
+        if (currentPlayer === 'black') {
+            showErrorMessage("Illegal Ko move.", row, col);
+        }
+        return false;
     }
 
     if (capturedStones > 0) {
@@ -269,7 +275,8 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     setConsecutivePasses(0);
     setIsAITurn(nextPlayer === 'white');
 
-  }, [board, currentPlayer, gameOver, history, getNeighbors, findGroup]);
+    return true; // Move was successful
+  }, [board, currentPlayer, gameOver, history, getNeighbors, findGroup, showErrorMessage]);
 
   const handlePass = useCallback(() => {
     if (gameOver || isAITurn) return;
@@ -288,10 +295,9 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
         if (move === 'pass') {
           passTurn();
         } else {
-          if(move.row >= 0 && move.row < size && move.col >= 0 && move.col < size && board[move.row][move.col] === null) {
-            handleMove(move.row, move.col);
-          } else {
-            console.warn("AI suggested an invalid move. Passing instead.");
+          const moveSuccessful = handleMove(move.row, move.col);
+          if (!moveSuccessful) {
+            console.warn("AI suggested an invalid move (suicide, ko, or occupied). Passing instead.");
             passTurn();
           }
         }
