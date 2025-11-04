@@ -36,12 +36,18 @@ export const getAIMove = async (board: Board, currentPlayer: Player, history: Bo
   const prompt = `
 ${getDifficultyInstruction(difficulty)}
 
-You are an expert Go player AI, playing as White ('W') on a ${board.length}x${board.length} board. Your task is to analyze the board and determine the best possible move.
+You are an expert Go (Weiqi) player AI. Your goal is to win by having a higher score (territory + captured stones) than your opponent. You are playing as White ('W').
 
-**Rules for a valid move:**
-1.  The move must be on an empty intersection (marked with '.').
-2.  **Suicide Rule:** You cannot place a stone where it would have no liberties, unless that move captures opponent stones.
-3.  **Ko Rule:** You cannot make a move that would repeat the board state from the previous turn.
+**CRITICAL RULES FOR A VALID MOVE:**
+Your move MUST strictly adhere to these rules. Failure to do so will result in an invalid move and a forfeited turn.
+1.  **Empty Point:** You MUST place your stone on an empty intersection, marked with '.'. Do NOT choose a coordinate occupied by 'B' or 'W'.
+2.  **Suicide Rule:** A move is illegal if it is a "suicide". This means placing a stone in a spot where it (and its connected group) has zero liberties, UNLESS this move simultaneously captures one or more of the opponent's stones. If a move results in your own group having no liberties, it is only valid if it also removes the last liberty from an opponent's group.
+3.  **Ko Rule:** You CANNOT make a move that reverts the board to the state it was in right before your opponent's last move. This prevents infinite loops. Compare the potential new board state with the provided "Previous Board State". They cannot be identical.
+
+**GAME CONTEXT:**
+- Board Size: ${board.length}x${board.length}
+- Your Color: White ('W')
+- Opponent's Color: Black ('B')
 
 **Current Board State:**
 (B = Black, W = White, . = Empty)
@@ -50,11 +56,16 @@ ${boardString}
 **Previous Board State (for Ko rule check):**
 ${lastBoardStateString}
 
-It is your turn to play as White ('W').
+**YOUR TASK:**
+Analyze the board and choose the best possible valid move for White ('W').
+Think strategically. Consider territory, influence, cutting and connecting, and the life and death of groups.
 
-Please provide your decision in JSON format.
-Your response should include your action ('MOVE' or 'PASS') and, if you move, the coordinates {row, col}.
-Your move MUST be on an empty spot.
+**RESPONSE FORMAT:**
+Provide your decision in JSON format.
+- If you have a valid, strategic move, respond with \`{"action": "MOVE", "move": {"row": <number>, "col": <number>}}\`.
+- Only if there are NO beneficial or legal moves available, respond with \`{"action": "PASS"}\`. Passing should be a last resort. Do not pass if there are still good moves to make.
+
+Your move MUST be on an empty spot. Double-check your chosen coordinates against the current board state.
 `;
 
   try {
@@ -93,12 +104,12 @@ Your move MUST be on an empty spot.
 
     if (result.action === 'MOVE' && result.move && typeof result.move.row === 'number' && typeof result.move.col === 'number') {
       const { row, col } = result.move;
-      // Validate move is within bounds and on an empty spot
+      // Final validation: ensure move is within bounds and on an empty spot
       if (row >= 0 && row < board.length && col >= 0 && col < board.length) {
           if (board[row][col] === null) {
             return result.move;
           } else {
-            console.error("AI suggested an occupied spot:", result.move);
+            console.error("AI violated rules by suggesting an occupied spot:", result.move);
             return 'pass'; // Fallback to passing if spot is occupied
           }
       }

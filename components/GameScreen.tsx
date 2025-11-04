@@ -60,6 +60,14 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     setTimers({ black: initialTime, white: initialTime });
   }, [initialBoard, getInitialTime, timeSetting]);
   
+  const showErrorMessage = useCallback((msg: string, row?: number, col?: number) => {
+    setMessage(msg);
+    setMessageType('error');
+    if (row !== undefined && col !== undefined) {
+      setInvalidMove({ row, col });
+    }
+  }, []);
+
   // Effect to clear error messages after a delay
   useEffect(() => {
     if (messageType === 'error') {
@@ -74,14 +82,6 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
         return () => clearTimeout(timer);
     }
   }, [message, messageType, currentPlayer, gameOver]);
-
-  const showErrorMessage = useCallback((msg: string, row?: number, col?: number) => {
-    setMessage(msg);
-    setMessageType('error');
-    if (row !== undefined && col !== undefined) {
-      setInvalidMove({ row, col });
-    }
-  }, []);
 
   const getNeighbors = useCallback((r: number, c: number) => {
     const neighbors = [];
@@ -213,19 +213,22 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
   const handleMove = useCallback((row: number, col: number): boolean => {
     if (gameOver) return false;
 
+    // 1. Check if the spot is already taken
     if (board[row][col] !== null) {
       if (currentPlayer === 'black') { // Only show UI error for human player
         showErrorMessage("Invalid move: Spot is taken.", row, col);
       }
-      return false;
+      return false; // Move is invalid
     }
     
+    // Create a temporary board to test the move
     let newBoard = board.map(r => [...r]);
     newBoard[row][col] = currentPlayer;
 
     const opponent: Player = currentPlayer === 'black' ? 'white' : 'black';
     let capturedStones = 0;
 
+    // 2. Check for captures
     for (const neighbor of getNeighbors(row, col)) {
       if (newBoard[neighbor.r][neighbor.c] === opponent) {
         const { group, liberties } = findGroup(neighbor.r, neighbor.c, opponent, newBoard);
@@ -239,23 +242,26 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
       }
     }
 
+    // 3. Check for suicide
     const { liberties: selfLiberties } = findGroup(row, col, currentPlayer, newBoard);
     if (selfLiberties === 0 && capturedStones === 0) {
       if (currentPlayer === 'black') {
         showErrorMessage("Illegal suicide move.", row, col);
       }
-      return false;
+      return false; // Move is invalid
     }
 
+    // 4. Check for Ko
     const newBoardString = JSON.stringify(newBoard);
     const lastBoardString = history.length > 0 ? JSON.stringify(history[history.length - 1]) : null;
     if(newBoardString === lastBoardString){
         if (currentPlayer === 'black') {
             showErrorMessage("Illegal Ko move.", row, col);
         }
-        return false;
+        return false; // Move is invalid
     }
 
+    // If all checks pass, the move is valid. Update the game state.
     if (capturedStones > 0) {
         playSound('capture');
         setLastSound('Capture!');
@@ -296,6 +302,8 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
           passTurn();
         } else {
           const moveSuccessful = handleMove(move.row, move.col);
+          // This is the failsafe. If the AI suggests an illegal move that
+          // handleMove rejects, the AI will pass its turn instead of freezing the game.
           if (!moveSuccessful) {
             console.warn("AI suggested an invalid move (suicide, ko, or occupied). Passing instead.");
             passTurn();
@@ -432,7 +440,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
                     </div>
               </div>
           )}
-          <GoBoard size={size} boardState={board} onMove={handleMove} lastMove={lastMove} disabled={isAITurn || gameOver} territoryMap={territory} invalidMove={invalidMove} />
+          <GoBoard size={size} boardState={board} onMove={(r, c) => !isAITurn && handleMove(r, c)} lastMove={lastMove} disabled={isAITurn || gameOver} territoryMap={territory} invalidMove={invalidMove} />
       </div>
     </div>
   );
