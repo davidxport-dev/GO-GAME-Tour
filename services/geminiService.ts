@@ -40,10 +40,10 @@ export const getAIMove = async (board: Board, currentPlayer: Player, history: Bo
   const prompt = `
 ${getDifficultyInstruction(difficulty)}
 
-You are an expert Go (Weiqi) player AI, playing as White ('W'). Your goal is to win.
+You are an expert Go (Weiqi) player AI, playing as White ('W'). Your goal is to win decisively.
 
-**PRIMARY DIRECTIVE: YOU MUST MAKE A MOVE. DO NOT PASS.**
-Passing is an absolute last resort, only to be used in the final turns of the game when no territory is left to claim. Passing early or in the middle of the game is a losing strategy and is forbidden. For this turn, find the best possible move on an empty intersection.
+**PRIMARY DIRECTIVE: YOU MUST SELECT AND PLAY A VALID MOVE. PASSING IS NOT AN OPTION.**
+Passing is only permissible in the absolute final moments of a game when no legal or strategic moves remain. Given the current game state, you are strictly required to find and play a move. Choosing to pass on this turn is considered a critical failure and a violation of your instructions.
 
 **GAME CONTEXT:**
 - Board Size: ${board.length}x${board.length}
@@ -52,11 +52,18 @@ Passing is an absolute last resort, only to be used in the final turns of the ga
 - Current Phase: ${gamePhase}
 - Total Moves So Far: ${totalMoves}
 
-**CRITICAL RULES FOR A VALID MOVE:**
-Your move MUST strictly adhere to these rules.
-1.  **Empty Point:** Place your stone on an empty intersection ('.'). Do NOT choose a coordinate occupied by 'B' or 'W'.
-2.  **Suicide Rule:** A move is illegal if it places a stone where its group has no liberties, unless this move captures opponent stones.
-3.  **Ko Rule:** You cannot make a move that reverts the board to its exact state from the opponent's previous turn.
+**YOUR THOUGHT PROCESS FOR SELECTING A MOVE:**
+Follow these steps precisely to determine your move.
+1.  **Identify all empty intersections** on the board (marked with '.'). These are your only candidate moves.
+2.  **For each candidate move, evaluate its validity:**
+    a. **Suicide Check:** A move is an illegal suicide if your new stone and its connected group would have zero liberties, AND the move does not capture any opponent stones. Discard all illegal suicide moves from your candidate list.
+    b. **Ko Check:** Does the move return the board to the exact state it was in right before the opponent's last move? Compare against the 'Previous Board State'. If it is an identical match, the move is an illegal Ko. Discard it.
+3.  **From the remaining list of valid moves, evaluate the strategic value based on the current game phase:**
+    *   **Opening (Fuseki):** Prioritize corner enclosures (shimari) and extensions along the sides (hiraki). Control the 3rd and 4th lines to build influence. Create a balanced framework.
+    *   **Mid-game (Chuban):** Actively seek to cut your opponent's groups apart, and ensure your own groups are connected and have two eyes (are alive). Look for opportunities to attack weak enemy stones, reduce your opponent's potential territory, and invade.
+    *   **End-game (Yose):** Secure territory boundaries precisely. Play 'sente' moves that force a response. Calculate the point value of remaining moves and play the largest ones first.
+4.  **Select the best strategic move** from your list of valid, legal options.
+5.  **Final Check:** Before responding, double-check that your chosen move \`{row, col}\` is on an empty '.' on the current board.
 
 **Current Board State:**
 (B = Black, W = White, . = Empty)
@@ -65,15 +72,10 @@ ${boardString}
 **Previous Board State (for Ko rule check):**
 ${lastBoardStateString}
 
-**STRATEGIC GUIDANCE:**
-- **If Phase is Opening (Fuseki):** Focus on establishing territory and influence. Prioritize moves on the 3rd or 4th lines from the edge. Secure corners first, then sides. Create a balanced position.
-- **If Phase is Mid-game (Chuban):** Focus on attacking weak groups, defending your own, reducing the opponent's territory, and invading.
-- **If Phase is End-game (Yose):** Focus on solidifying territory boundaries and capturing any remaining neutral points.
-
 **YOUR TASK & RESPONSE FORMAT:**
-Analyze the board and choose the best possible valid move for White ('W'). Your response must be in JSON format.
-- **You are required to make a move.** Respond with \`{"action": "MOVE", "move": {"row": <number>, "col": <number>}}\`.
-- **Passing is forbidden unless it is the absolute end of the game.** If and only if there are no valid or beneficial moves left anywhere on the board, you may respond with \`{"action": "PASS"}\`. Given the current board state, you are expected to find a move.
+Analyze the board following the thought process above. You must respond with the coordinates of your chosen move in JSON format.
+- **Your response MUST be:** \`{"action": "MOVE", "move": {"row": <number>, "col": <number>}}\`.
+- **DO NOT respond with "PASS".** It is critical that you find and execute a valid move.
 `;
 
   try {
@@ -87,7 +89,7 @@ Analyze the board and choose the best possible valid move for White ('W'). Your 
           properties: {
             action: {
               type: Type.STRING,
-              description: "Either 'MOVE' or 'PASS'.",
+              description: "Either 'MOVE' or 'PASS'. You must choose 'MOVE'.",
             },
             move: {
               type: Type.OBJECT,
@@ -107,6 +109,7 @@ Analyze the board and choose the best possible valid move for White ('W'). Your 
     const result = JSON.parse(jsonText);
     
     if (result.action === 'PASS') {
+      console.warn("AI chose to pass despite instructions. This may be a late-game scenario or a prompt adherence issue.");
       return 'pass';
     }
 
