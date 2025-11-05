@@ -106,17 +106,17 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
       for (const neighbor of getNeighbors(stone.r, stone.c)) {
         const key = `${neighbor.r},${neighbor.c}`;
         if (visited.has(key)) continue;
-        visited.add(key);
         
         const neighborStone = currentBoard[neighbor.r][neighbor.c];
         if (neighborStone === player) {
+          visited.add(key);
           queue.push(neighbor);
         } else if (neighborStone === null) {
           liberties.add(key);
         }
       }
     }
-    return { group, liberties: liberties.size };
+    return { group, liberties };
   }, [getNeighbors]);
   
   const calculateTerritory = useCallback((finalBoard: Board) => {
@@ -168,16 +168,64 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
   }, [size, getNeighbors]);
   
   const endGame = useCallback(() => {
-    const { blackTerritory, whiteTerritory, territoryMap } = calculateTerritory(board);
+    // Pass 1: Initial territory calculation to identify influential areas
+    const { territoryMap: initialTerritoryMap } = calculateTerritory(board);
     
+    let finalBoard = board.map(r => [...r]);
+    const visitedStones = new Set<string>();
+    let deadBlackStones = 0;
+    let deadWhiteStones = 0;
+
+    // Pass 2: Identify and mark dead stones
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const stoneKey = `${r},${c}`;
+        const stone = finalBoard[r][c];
+        if (stone && !visitedStones.has(stoneKey)) {
+          const { group, liberties } = findGroup(r, c, stone, finalBoard);
+          group.forEach(key => visitedStones.add(key));
+
+          let isDead = true;
+          if (liberties.size > 0) {
+            for (const libertyKey of liberties) {
+              const [lr, lc] = libertyKey.split(',').map(Number);
+              // A group is alive if any of its liberties are in its own territory or neutral territory
+              if (initialTerritoryMap[lr][lc] !== (stone === 'black' ? 'white' : 'black')) {
+                isDead = false;
+                break;
+              }
+            }
+          }
+          // Note: A group with 0 liberties at the end of the game is also considered dead.
+
+          if (isDead) {
+            if (stone === 'black') deadBlackStones += group.size;
+            else deadWhiteStones += group.size;
+            
+            group.forEach(key => {
+              const [gr, gc] = key.split(',').map(Number);
+              finalBoard[gr][gc] = null; // Remove dead stones for final territory count
+            });
+          }
+        }
+      }
+    }
+
+    // Pass 3: Final territory calculation on the board with dead stones removed
+    const { blackTerritory, whiteTerritory, territoryMap } = calculateTerritory(finalBoard);
+    
+    // Final Scoring
+    const capturedByBlack = scores.black + deadWhiteStones;
+    const capturedByWhite = scores.white + deadBlackStones;
+
+    const finalBlack = blackTerritory + capturedByBlack;
+    const finalWhite = whiteTerritory + capturedByWhite;
+
     setScoreDetails({
-        black: { territory: blackTerritory, captured: scores.black },
-        white: { territory: whiteTerritory, captured: scores.white }
+        black: { territory: blackTerritory, captured: capturedByBlack },
+        white: { territory: whiteTerritory, captured: capturedByWhite }
     });
 
-    const finalBlack = scores.black + blackTerritory;
-    const finalWhite = scores.white + whiteTerritory;
-    
     setScores({ black: finalBlack, white: finalWhite });
     setTerritory(territoryMap);
     setGameOver(true);
@@ -193,7 +241,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     setMessage(winnerMessage);
     setMessageType('info');
 
-  }, [board, scores, calculateTerritory]);
+  }, [board, scores, calculateTerritory, size, findGroup]);
 
   const passTurn = useCallback(() => {
     playSound('pass');
@@ -232,7 +280,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     for (const neighbor of getNeighbors(row, col)) {
       if (newBoard[neighbor.r][neighbor.c] === opponent) {
         const { group, liberties } = findGroup(neighbor.r, neighbor.c, opponent, newBoard);
-        if (liberties === 0) {
+        if (liberties.size === 0) {
           capturedStones += group.size;
           group.forEach(key => {
             const [r, c] = key.split(',').map(Number);
@@ -244,7 +292,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
 
     // 3. Check for suicide
     const { liberties: selfLiberties } = findGroup(row, col, currentPlayer, newBoard);
-    if (selfLiberties === 0 && capturedStones === 0) {
+    if (selfLiberties.size === 0 && capturedStones === 0) {
       if (currentPlayer === 'black') {
         showErrorMessage("Illegal suicide move.", row, col);
       }
@@ -295,26 +343,40 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
       setMessage("AI is thinking...");
       setMessageType('info');
       const performAIMove = async () => {
-        const move = await getAIMove(board, 'white', history, difficulty);
-        setLoadingAI(false);
+        let attempts = 0;
+        const maxAttempts = 3; // Give the AI 3 chances to find a valid move.
 
-        if (move === 'pass') {
-          passTurn();
-        } else {
-          const moveSuccessful = handleMove(move.row, move.col);
-          // This is the failsafe. If the AI suggests an illegal move that
-          // handleMove rejects, the AI will pass its turn instead of freezing the game.
-          if (!moveSuccessful) {
-            console.warn("AI suggested an invalid move (suicide, ko, or occupied). Passing instead.");
+        while (attempts < maxAttempts) {
+          const move = await getAIMove(board, 'white', history, difficulty);
+          
+          if (move === 'pass') {
             passTurn();
+            setLoadingAI(false);
+            return;
           }
+
+          const moveSuccessful = handleMove(move.row, move.col);
+
+          if (moveSuccessful) {
+            setLoadingAI(false);
+            return; // Success, exit the function.
+          }
+          
+          // If move was not successful, it was illegal.
+          attempts++;
+          console.warn(`AI suggested an invalid move (attempt ${attempts}/${maxAttempts}). Retrying...`);
         }
+
+        // If the loop completes, all attempts failed.
+        console.error(`AI failed to find a valid move after ${maxAttempts} attempts. Passing turn.`);
+        passTurn();
+        setLoadingAI(false);
       };
       
       const timeoutId = setTimeout(performAIMove, 1000);
       return () => clearTimeout(timeoutId);
     }
-  }, [isAITurn, currentPlayer, gameOver, board, history, handleMove, passTurn, size, difficulty]);
+  }, [isAITurn, currentPlayer, gameOver, board, history, handleMove, passTurn, difficulty]);
 
   // Timer countdown effect
   useEffect(() => {
