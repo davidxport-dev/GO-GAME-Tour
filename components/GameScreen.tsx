@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Player, Board, Stone, AIDifficulty, TimeSetting } from '../types';
+import { Player, Board, Stone, AIDifficulty, TimeSetting, Move } from '../types';
 import GoBoard from './GoBoard';
 import { getAIMove } from '../services/geminiService';
 import ArrowLeftIcon from './icons/ArrowLeftIcon';
 import { playSound } from '../services/audioService';
 import SpeakerWaveIcon from './icons/SpeakerWaveIcon';
 import ClockIcon from './icons/ClockIcon';
+import ChevronDownIcon from './icons/ChevronDownIcon';
 
 const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDifficulty; timeSetting: TimeSetting; }> = ({ onBack, size, difficulty, timeSetting }) => {
   const initialBoard = useMemo(() => Array(size).fill(null).map(() => Array(size).fill(null)), [size]);
@@ -35,6 +36,8 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     black: getInitialTime(timeSetting),
     white: getInitialTime(timeSetting),
   });
+  const [moveHistory, setMoveHistory] = useState<(Move | 'pass')[]>([]);
+  const [isHistoryVisible, setIsHistoryVisible] = useState(false);
 
   useEffect(() => {
     if (lastSound) {
@@ -56,6 +59,8 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     setLastMove(null);
     setTerritory(initialBoard);
     setScoreDetails(null);
+    setMoveHistory([]);
+    setIsHistoryVisible(false);
     const initialTime = getInitialTime(timeSetting);
     setTimers({ black: initialTime, white: initialTime });
   }, [initialBoard, getInitialTime, timeSetting]);
@@ -246,6 +251,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
   const passTurn = useCallback(() => {
     playSound('pass');
     setLastSound('Pass');
+    setMoveHistory(prev => [...prev, 'pass']);
     const newPasses = consecutivePasses + 1;
     if (newPasses >= 2) {
         endGame();
@@ -324,6 +330,7 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
     const nextPlayer: Player = opponent;
     setCurrentPlayer(nextPlayer);
     setLastMove({row, col});
+    setMoveHistory(prev => [...prev, {row, col}]);
     setMessage(`${nextPlayer === 'black' ? 'Black' : 'White'}'s turn.`);
     setMessageType('info');
     setConsecutivePasses(0);
@@ -425,6 +432,25 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
       return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  const colToLetter = (col: number): string => {
+      const letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ"; // Skips 'I'
+      return letters[col] || '?';
+  };
+
+  const formatMove = (move: Move | 'pass', index: number): string => {
+      const moveNumber = Math.floor(index / 2) + 1;
+      const player: Player = index % 2 === 0 ? 'black' : 'white';
+      const playerName = player.charAt(0).toUpperCase() + player.slice(1);
+
+      if (move === 'pass') {
+          return `${moveNumber}. ${playerName}: Pass`;
+      }
+
+      const letter = colToLetter(move.col);
+      const rowNum = size - move.row;
+      return `${moveNumber}. ${playerName}: ${letter}${rowNum}`;
+  };
+
   return (
     <div className="h-full flex flex-col md:flex-row gap-4">
       {/* Info Panel */}
@@ -477,6 +503,38 @@ const GameScreen: React.FC<{ onBack: () => void; size: number; difficulty: AIDif
                         <div key={Date.now()} className="absolute inset-0 flex items-center justify-center space-x-2 text-green-400 opacity-0 animate-fade-in-out">
                             <SpeakerWaveIcon />
                             <span className="font-semibold">{lastSound}</span>
+                        </div>
+                    )}
+                </div>
+                 {/* Move History Section */}
+                <div className="mt-4">
+                    <button 
+                        onClick={() => setIsHistoryVisible(!isHistoryVisible)} 
+                        className="w-full flex justify-between items-center bg-gray-700/50 p-2 rounded-md hover:bg-gray-700 transition"
+                        aria-expanded={isHistoryVisible}
+                        aria-controls="move-history-panel"
+                    >
+                        <span className="font-semibold">Move History</span>
+                        <span className={`transition-transform duration-200 ${isHistoryVisible ? 'rotate-180' : ''}`}>
+                            <ChevronDownIcon />
+                        </span>
+                    </button>
+                    {isHistoryVisible && (
+                        <div id="move-history-panel" className="mt-2 bg-gray-800/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                            {moveHistory.length > 0 ? (
+                                <ul className="space-y-1 text-sm">
+                                    {[...moveHistory].reverse().map((move, index) => {
+                                        const originalIndex = moveHistory.length - 1 - index;
+                                        return (
+                                            <li key={originalIndex} className={`p-1 rounded ${originalIndex % 2 === 0 ? 'bg-gray-900/70' : 'bg-gray-700/70'}`}>
+                                                {formatMove(move, originalIndex)}
+                                            </li>
+                                        )
+                                    })}
+                                </ul>
+                            ) : (
+                                <p className="text-gray-500 italic text-center p-2">No moves yet.</p>
+                            )}
                         </div>
                     )}
                 </div>
