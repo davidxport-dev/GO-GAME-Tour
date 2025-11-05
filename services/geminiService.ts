@@ -37,45 +37,49 @@ export const getAIMove = async (board: Board, currentPlayer: Player, history: Bo
   const boardArea = board.length * board.length;
   const gamePhase = totalMoves / boardArea < 0.25 ? 'Opening (Fuseki)' : (totalMoves / boardArea < 0.75 ? 'Mid-game (Chuban)' : 'End-game (Yose)');
 
+  // Refined prompt for clarity, conciseness, and better guidance.
   const prompt = `
 ${getDifficultyInstruction(difficulty)}
 
-You are an expert Go (Weiqi) player AI. Your color is White ('W'). Your goal is to win.
+You are an expert Go (Weiqi) player AI. Your task is to analyze the provided game state and select the best possible **legal** move for the White player ('W').
 
-**PRIMARY DIRECTIVE:** You MUST select a valid, legal move. Your response must be in the specified JSON format.
+---
 
-**GAME CONTEXT:**
-- Board Size: ${board.length}x${board.length}
-- Your Color: White ('W')
-- Opponent's Color: Black ('B')
-- Current Game Phase: ${gamePhase}
-- Total Moves So Far: ${totalMoves}
+### Game Context
+- **Board Size:** ${board.length}x${board.length}
+- **Your Color:** White ('W')
+- **Game Phase:** ${gamePhase}
+- **Total Moves:** ${totalMoves}
 
-**CURRENT BOARD STATE:**
-(B = Black, W = White, . = Empty)
+---
+
+### Current Board State
+*B = Black, W = White, . = Empty*
+\`\`\`
 ${boardString}
+\`\`\`
 
-**PREVIOUS BOARD STATE (for Ko rule check):**
+---
+
+### Previous Board State (for Ko rule check)
+\`\`\`
 ${lastBoardStateString}
+\`\`\`
 
-**YOUR THOUGHT PROCESS:**
-1.  **Analyze the board:** Assess the overall position, identify key groups, and evaluate territory.
-2.  **Generate Candidate Moves:** Identify all empty intersections as potential moves.
-3.  **Filter for Legality:**
-    - Discard any move on an occupied point.
-    - Discard any illegal suicide move (placing a stone with no liberties, unless it captures opponent stones).
-    - Discard any illegal Ko move (a move that would repeat the immediate previous board state).
-4.  **Strategic Evaluation:** From the list of legal moves, evaluate them based on the current game phase.
-    *   **Opening:** Focus on corners, sides, and influence.
-    *   **Mid-game:** Focus on attacking weak groups, defending your own, and reducing opponent's territory.
-    *   **End-game:** Focus on securing boundaries and playing the largest remaining point-value moves.
-5.  **Select Best Move:** Choose the single move with the highest strategic value.
-6.  **Final Decision:** If a good move exists, you must play it. Only consider passing if there are absolutely no beneficial moves left, which is rare until the very end of the game.
+---
 
-**YOUR TASK & RESPONSE FORMAT:**
-Analyze the board and respond with a single JSON object for your chosen action.
-- If making a move: \`{"action": "MOVE", "move": {"row": <number>, "col": <number>}}\`
-- If passing (strongly discouraged): \`{"action": "PASS"}\`
+### Your Task
+1.  **Analyze the board** to identify strategic opportunities.
+2.  **Select a single, legal move** that maximizes your advantage. A legal move must be on an empty intersection and must not be a suicide or violate the Ko rule.
+3.  **Passing your turn is strongly discouraged.** Only respond with 'PASS' if there are no other valid or beneficial moves available, which is typical only at the very end of the game.
+4.  **Format your response** as a JSON object according to the provided schema.
+
+---
+
+### Response Format
+Your response MUST be a JSON object with an \`action\` and, if moving, a \`move\` object.
+- **Move:** \`{"action": "MOVE", "move": {"row": <number>, "col": <number>}}\`
+- **Pass:** \`{"action": "PASS"}\`
 `;
 
   try {
@@ -89,11 +93,11 @@ Analyze the board and respond with a single JSON object for your chosen action.
           properties: {
             action: {
               type: Type.STRING,
-              description: "The action to take, either 'MOVE' or 'PASS'.",
+              description: "The AI's chosen action. Must be 'MOVE' to place a stone or 'PASS' to skip the turn.",
             },
             move: {
               type: Type.OBJECT,
-              description: "The coordinates for the move. Required if action is 'MOVE'.",
+              description: "The {row, col} coordinates for the move. This field is required if the action is 'MOVE' and it must represent a legal move on an empty intersection.",
               properties: {
                 row: { type: Type.INTEGER },
                 col: { type: Type.INTEGER },
